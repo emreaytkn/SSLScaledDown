@@ -1,14 +1,17 @@
+import copy
 import torch
 import torchvision
 from torch import nn
 
 from lightly.loss import NegativeCosineSimilarity
 from lightly.models.modules import BYOLPredictionHead, BYOLProjectionHead
+from lightly.models.utils import deactivate_requires_grad, update_momentum
 from lightly.transforms.byol_transform import (
     BYOLTransform,
     BYOLView1Transform,
     BYOLView2Transform
 )
+from lightly.utils.scheduler import cosine_schedule
 
 print(f"PyTorch version: {torch.__version__}")
 print(f"Torchvision version: {torchvision.__version__}")
@@ -22,11 +25,23 @@ class BYOL(nn.Module):
         self.projection_head = BYOLProjectionHead(512, 1024, 256)
         self.prediction_head = BYOLPredictionHead(256, 1024, 256)
 
+        self.backbone_momentum = copy.deepcopy(self.backbone)
+        self.projection_head_momentum = copy.deepcopy(self.projection_head)
+
+        deactivate_requires_grad(self.backbone_momentum)
+        deactivate_requires_grad(self.projection_head_momentum)
+
     def forward(self, x):
         y = self.backbone(x).flatten(start_dim=1)
         z = self.projection_head(y)
         p = self.prediction_head(z)
         return p
+
+    def forward_momentum(self, x):
+        y = self.backbone_momentum(x).flatten(start_dim=1)
+        z = self.projection_head_momentum(y)
+        z = z.detach()
+        return z
 
 
 resnet = torchvision.models.resnet18()
@@ -50,7 +65,7 @@ dataloader = torch.utils.data.DataLoader(
     batch_size=256,
     shuffle=True,
     drop_last=True,
-    num_workers=8
+    num_workers=0
 )
 
 criterion = NegativeCosineSimilarity()
@@ -58,7 +73,37 @@ optimizer = torch.optim.SGD(model.parameters(), lr=0.06)
 
 epochs = 10
 
-print(f"Starting training with #epoch={epochs}")
-for epoch in range(epochs):
-    total_loss = 0
+
+if __name__ == '__main__':    
+    print(f"Starting training with #epoch={epochs}")
+    for epoch in range(epochs):
+        total_loss = 0
+        momentum_val = cosine_schedule(epoch, epochs, 0.996, 1)
+        for batch in dataloader:
+        #    print(batch)
+            x0, x1 = batch[0]
+
+            update_momentum(model.backbone, model.backbone_momentum, m=momentum_val)
+            update_momentum(model.projection_head, model.projection_head_momentum, m=momentum_val)
+
+            x0 = x0.to(device)
+            x1 = x1.to(device)
+
+            p0 = model(x0)
+            z0 = model.forward_momentum(x0)
+
+            p1 = model(x1)
+            z1 = model.forward_momentum(x1)
+
+            loss = 0.5 * (criterion(p0, z1) + criterion(p1, z0))
+            total_loss += loss.detach()
+            loss.backward()
+
+            optimizer.step()
+            optimizer.zero_grad()
+
+
+
+        avg_loss = total_loss / len(dataloader)
+        print(f"epoch: {epoch:>02}, loss: {avg_loss:.5f}")
 
