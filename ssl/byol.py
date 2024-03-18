@@ -2,6 +2,7 @@ import copy
 import torch
 import torchvision
 from torch import nn
+from torch.utils.data import DataLoader
 
 from lightly.loss import NegativeCosineSimilarity
 from lightly.models.modules import BYOLPredictionHead, BYOLProjectionHead
@@ -58,9 +59,9 @@ transform = BYOLTransform(
     view_2_transform=BYOLView2Transform(input_size=32, gaussian_blur=0.0),
 )
 dataset = torchvision.datasets.CIFAR10(
-    "datasets/cifar10", download=True, transform=transform
+    "../datasets/cifar10", download=True, transform=transform
 )
-dataloader = torch.utils.data.DataLoader(
+dataloader = DataLoader(
     dataset,
     batch_size=256,
     shuffle=True,
@@ -73,14 +74,13 @@ optimizer = torch.optim.SGD(model.parameters(), lr=0.06)
 
 epochs = 10
 
-
 if __name__ == '__main__':    
     print(f"Starting training with #epoch={epochs}")
     for epoch in range(epochs):
         total_loss = 0
         momentum_val = cosine_schedule(epoch, epochs, 0.996, 1)
         for batch in dataloader:
-        #    print(batch)
+
             x0, x1 = batch[0]
 
             update_momentum(model.backbone, model.backbone_momentum, m=momentum_val)
@@ -101,8 +101,6 @@ if __name__ == '__main__':
 
             optimizer.step()
             optimizer.zero_grad()
-
-
 
         avg_loss = total_loss / len(dataloader)
         print(f"epoch: {epoch:>02}, loss: {avg_loss:.5f}")

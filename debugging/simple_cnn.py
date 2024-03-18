@@ -21,12 +21,14 @@ The CIFAR-10 dataset consists of 60000 32x32 colour images in 10 classes, with 6
 There are 50000 training images and 10000 test images.
 """
 
-batch_size = 4
+batch_size = 16
 transform = transforms.Compose([transforms.ToTensor()])
 train_set = torchvision.datasets.CIFAR10(
     "../datasets/cifar10", train=True, download=True, transform=transform
 )
 train_loader = torch.utils.data.DataLoader(train_set, batch_size=batch_size, shuffle=True, num_workers=0)
+print(f"TrainLoader length: {len(train_loader)}")
+
 
 # Get cpu or gpu for training
 device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -81,7 +83,7 @@ def train(dataloader, model, loss_fn, metrics_fn, optimizer, epoch):
         if i % 125 == 124:  # print every 100 mini-batches
             loss, current = loss.item(), i
             print(
-                f"loss: {loss:3f} accuracy: {accuracy:3f} [{current} / {len(dataloader)}]"
+                f"loss: {loss:3f} accuracy: {accuracy:3f} [{current+1} / {len(dataloader)}]"
             )
             mlflow.log_metric("loss", f"{running_loss / 2000:.3f}", step=(i // 2000))
             mlflow.log_metric("accuracy", f"{accuracy:3f}", step=(i // 2000))
